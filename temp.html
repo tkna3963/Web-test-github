@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>位置情報と制動距離の計算</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        .data-display {
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>位置情報と制動距離の計算</h1>
+    <div class="data-display">
+        <p>現在の速度: <span id="speed">--</span> km/h</p>
+        <p>緯度: <span id="latitude">--</span></p>
+        <p>経度: <span id="longitude">--</span></p>
+        <p>高度: <span id="altitude">--</span> m</p>
+        <p>高度の精度: <span id="altitudeAccuracy">--</span> m</p>
+        <p>位置の精度: <span id="accuracy">--</span> m</p>
+        <p>進行方向: <span id="heading">--</span> 度</p>
+        <p>取得時刻: <span id="timestamp">--</span></p>
+        <hr>
+        <p>制動距離: <span id="brakingDistance">--</span> m</p>
+        <p>惰行距離: <span id="coastingDistance">--</span> m</p>
+        <p>合計距離: <span id="totalDistance">--</span> m</p>
+    </div>
+
+    <script>
+        // 列車の減速度 (m/s^2)
+        const decelerationRate = 20 / 7;
+
+        // ATS（自動列車停止装置）の遅延時間 (秒)
+        const atsDelay = 1;
+
+        // ブレーキシステムの遅延時間 (秒)
+        const brakeDelay = 1;
+
+        // 運転手の応答時間 (秒)
+        const responseTime = 5;
+
+        // 制動距離と惰行距離の計算
+        function calculateDistances(speed) {
+            const brakingDistance = Math.pow(speed, 2) / decelerationRate;
+            const coastingDistance = (speed / 3.6) * (atsDelay + brakeDelay + responseTime);
+            return {
+                brakingDistance,
+                coastingDistance,
+                totalDistance: brakingDistance + coastingDistance
+            };
+        }
+
+        // タイムスタンプをフォーマットする関数
+        function formatTimestamp(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleString(); // ローカルタイムゾーンでの日時表記
+        }
+
+        // 位置情報が更新されるたびに速度と他の情報を表示
+        function updatePosition(position) {
+            let speed = position.coords.speed; // 速度は m/s で取得される
+
+            // 速度がnullの場合は速度データが取れていないことを意味するため、0として扱う
+            if (speed === null) {
+                speed = 0;
+            }
+
+            // km/hに変換
+            speed = speed * 3.6;
+
+            // 制動距離などの計算
+            const distances = calculateDistances(speed);
+
+            // HTMLに結果を反映
+            document.getElementById('speed').textContent = speed.toFixed(2);
+            document.getElementById('brakingDistance').textContent = distances.brakingDistance.toFixed(2);
+            document.getElementById('coastingDistance').textContent = distances.coastingDistance.toFixed(2);
+            document.getElementById('totalDistance').textContent = distances.totalDistance.toFixed(2);
+
+            // 位置情報の他のデータを表示
+            document.getElementById('latitude').textContent = position.coords.latitude.toFixed(6);
+            document.getElementById('longitude').textContent = position.coords.longitude.toFixed(6);
+            document.getElementById('altitude').textContent = position.coords.altitude !== null ? position.coords.altitude.toFixed(2) : "N/A";
+            document.getElementById('altitudeAccuracy').textContent = position.coords.altitudeAccuracy !== null ? position.coords.altitudeAccuracy.toFixed(2) : "N/A";
+            document.getElementById('accuracy').textContent = position.coords.accuracy.toFixed(2);
+            document.getElementById('heading').textContent = position.coords.heading !== null ? position.coords.heading.toFixed(2) : "N/A";
+            document.getElementById('timestamp').textContent = formatTimestamp(position.timestamp);
+        }
+
+        // Geolocation APIで位置情報を取得
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(updatePosition, function(error) {
+                console.error("位置情報の取得に失敗しました:", error);
+            }, {
+                maximumAge: 0,           // キャッシュを使わない
+                timeout: 5000            // タイムアウト時間 (ミリ秒)
+            });
+        } else {
+            alert("このブラウザではGeolocation APIがサポートされていません。");
+        }
+    </script>
+</body>
+</html>
