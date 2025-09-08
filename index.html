@@ -1,13 +1,100 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
- <title>RealTime_Yahoo_Earthquake_Info BY TKYT612314</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WebRTC メッセージテスト</title>
+<style>
+body { font-family: -apple-system, sans-serif; margin: 12px; }
+textarea { width: 100%; height: 100px; }
+#log { background:#f0f0f0; height:200px; overflow:auto; padding:6px; margin-top:6px; }
+#chat { margin-top:6px; height:200px; overflow:auto; border:1px solid #ccc; padding:6px; }
+</style>
 </head>
-
 <body>
-<h1>Javascript</h1>
-<script src="mainScript.js"></script>
-<script>text_alert("test")</script>
-</body>
+<h2>WebRTC メッセージテスト</h2>
 
+<label>自分のSDP（初回接続用）</label>
+<textarea id="localSDP" readonly></textarea>
+<button id="createOffer">Offer作成</button>
+
+<label>相手のSDPを貼る</label>
+<textarea id="remoteSDP"></textarea>
+<button id="setRemote">接続開始</button>
+
+<label>メッセージ</label>
+<input id="msgInput" type="text">
+<button id="sendBtn">送信</button>
+
+<div id="chat"></div>
+<div id="log"></div>
+
+<script>
+let pc;
+let dc;
+
+function log(msg){ 
+  const logEl = document.getElementById('log');
+  logEl.innerText += msg + "\n"; 
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function appendChat(from, msg){
+  const chatEl = document.getElementById('chat');
+  chatEl.innerHTML += "<b>"+from+"</b>: "+msg+"<br>";
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+// Offer作成
+document.getElementById('createOffer').addEventListener('click', async ()=>{
+  pc = new RTCPeerConnection();
+
+  dc = pc.createDataChannel("chat");
+  dc.onmessage = e=>appendChat("相手", e.data);
+  dc.onopen = ()=>log("DataChannel open");
+
+  pc.onicecandidate = e=>{
+    if(e.candidate) return;
+    document.getElementById('localSDP').value = JSON.stringify(pc.localDescription);
+    log("SDP作成完了。相手にコピーして渡してね。");
+  }
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+});
+
+// 相手SDP貼って接続開始
+document.getElementById('setRemote').addEventListener('click', async ()=>{
+  if(!pc) pc = new RTCPeerConnection();
+
+  pc.ondatachannel = e=>{
+    dc = e.channel;
+    dc.onmessage = e=>appendChat("相手", e.data);
+    dc.onopen = ()=>log("DataChannel open");
+  }
+
+  const remoteSDP = JSON.parse(document.getElementById('remoteSDP').value);
+  await pc.setRemoteDescription(remoteSDP);
+
+  if(remoteSDP.type === "offer"){
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    document.getElementById('localSDP').value = JSON.stringify(pc.localDescription);
+    log("Answer作成完了。コピーして相手に渡してね。");
+  }
+});
+
+// メッセージ送信
+document.getElementById('sendBtn').addEventListener('click', ()=>{
+  const msg = document.getElementById('msgInput').value;
+  if(dc && dc.readyState === "open"){
+    dc.send(msg);
+    appendChat("自分", msg);
+    document.getElementById('msgInput').value = "";
+  } else {
+    log("DataChannelが未接続です");
+  }
+});
+</script>
+</body>
 </html>
