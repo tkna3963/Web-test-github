@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WebRTC メッセージアプリ</title>
+<title>WebRTC ファイル接続メッセージ</title>
 <style>
 body { font-family: -apple-system, sans-serif; margin:12px; }
 textarea, input[type=text], input[type=file] { width:100%; margin-top:4px; margin-bottom:6px; }
@@ -13,24 +13,14 @@ button { margin-top:4px; }
 </style>
 </head>
 <body>
-<h2>WebRTC メッセージアプリ（テスト用）</h2>
+<h2>WebRTC ファイル接続メッセージ</h2>
 
-<label>自分のSDP（初回接続用）</label>
-<textarea id="localSDP" readonly></textarea>
-<button id="createOffer">Offer作成</button>
-
-<label>相手のSDPを貼る</label>
-<textarea id="remoteSDP"></textarea>
-<button id="setRemote">接続開始</button>
+<button id="createOffer">Offer作成 & ファイル保存</button>
+<input type="file" id="loadSDP"> SDPファイル読み込み（Answer/Offer用）
 
 <label>メッセージ入力</label>
 <input id="msgInput" type="text">
 <button id="sendBtn">送信</button>
-
-<label>ファイル選択（送信用）</label>
-<input type="file" id="fileInput">
-
-<button id="downloadLog">チャットログをダウンロード</button>
 
 <div id="chat"></div>
 <div id="log"></div>
@@ -51,7 +41,7 @@ function appendChat(from,msg){
   chatEl.scrollTop = chatEl.scrollHeight;
 }
 
-// Offer作成
+// Offer作成 + ファイル保存
 document.getElementById('createOffer').addEventListener('click', async ()=>{
   pc = new RTCPeerConnection();
 
@@ -61,33 +51,61 @@ document.getElementById('createOffer').addEventListener('click', async ()=>{
 
   pc.onicecandidate = e=>{
     if(e.candidate) return;
-    document.getElementById('localSDP').value = JSON.stringify(pc.localDescription);
-    log("SDP作成完了。相手にコピーして渡してね。");
+    const sdpText = JSON.stringify(pc.localDescription);
+    const blob = new Blob([sdpText], {type:'text/plain'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'offer_sdp.txt';
+    a.click();
+    URL.revokeObjectURL(url);
+    log("Offer作成完了。offer_sdp.txtを相手に渡してください。");
   }
 
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 });
 
-// 相手SDP貼って接続開始
-document.getElementById('setRemote').addEventListener('click', async ()=>{
-  if(!pc) pc = new RTCPeerConnection();
+// SDPファイル読み込み
+document.getElementById('loadSDP').addEventListener('change', e=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async function(){
+    const sdp = JSON.parse(reader.result);
 
-  pc.ondatachannel = e=>{
-    dc = e.channel;
-    dc.onmessage = e=>appendChat("相手", e.data);
-    dc.onopen = ()=>log("DataChannel open");
+    if(!pc) pc = new RTCPeerConnection();
+
+    pc.ondatachannel = e=>{
+      dc = e.channel;
+      dc.onmessage = e=>appendChat("相手", e.data);
+      dc.onopen = ()=>log("DataChannel open");
+    }
+
+    await pc.setRemoteDescription(sdp);
+
+    if(sdp.type === "offer"){
+      dc = pc.createDataChannel("chat");
+      dc.onmessage = e=>appendChat("相手", e.data);
+      dc.onopen = ()=>log("DataChannel open");
+
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      const blob = new Blob([JSON.stringify(pc.localDescription)], {type:'text/plain'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'answer_sdp.txt';
+      a.click();
+      URL.revokeObjectURL(url);
+
+      log("Answer作成完了。answer_sdp.txtを相手に渡してください。");
+    } else {
+      log("接続完了。");
+    }
   }
-
-  const remoteSDP = JSON.parse(document.getElementById('remoteSDP').value);
-  await pc.setRemoteDescription(remoteSDP);
-
-  if(remoteSDP.type === "offer"){
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    document.getElementById('localSDP').value = JSON.stringify(pc.localDescription);
-    log("Answer作成完了。コピーして相手に渡してね。");
-  }
+  reader.readAsText(file);
 });
 
 // メッセージ送信
@@ -100,35 +118,6 @@ document.getElementById('sendBtn').addEventListener('click', ()=>{
   } else {
     log("DataChannelが未接続です");
   }
-});
-
-// ファイル送信
-document.getElementById('fileInput').addEventListener('change', e=>{
-  const file = e.target.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = function(){
-    const text = reader.result;
-    if(dc && dc.readyState === "open"){
-      dc.send("[File] "+file.name+"\n"+text);
-      appendChat("自分 (file)", file.name);
-    } else {
-      log("DataChannelが未接続です");
-    }
-  }
-  reader.readAsText(file);
-});
-
-// チャットログダウンロード
-document.getElementById('downloadLog').addEventListener('click', ()=>{
-  const chatEl = document.getElementById('chat');
-  const blob = new Blob([chatEl.innerText], {type:'text/plain'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'chat_log.txt';
-  a.click();
-  URL.revokeObjectURL(url);
 });
 </script>
 </body>
